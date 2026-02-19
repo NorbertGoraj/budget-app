@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: budget
       POSTGRES_DB: budget
     ports:
-      - "5432:5432"
+      - "54329:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -15,20 +15,31 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  migrator:
     build: ./backend
-    ports:
-      - "8080:8080"
+    command: ["/migrate", "up"]
     environment:
       DATABASE_URL: postgres://budget:budget@db:5432/budget?sslmode=disable
     depends_on:
       db:
         condition: service_healthy
+    restart: "no"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8081:8080"
+      - "9091:9091"
+    environment:
+      DATABASE_URL: postgres://budget:budget@db:5432/budget?sslmode=disable
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
 
   frontend:
     build: ./frontend
     ports:
-      - "4200:80"
+      - "4201:80"
     depends_on:
       - backend
 

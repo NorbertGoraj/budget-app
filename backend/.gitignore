@@ -1,0 +1,14 @@
+# Build output
+bin/
+
+# Test cache
+*.test
+*.out
+
+# Environment
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
