@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"encoding/csv"
@@ -8,22 +8,33 @@ import (
 	"strconv"
 	"strings"
 
-	"budget-app/models"
+	"budget-app/domain"
+	"budget-app/interface/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func ImportCSV(c *gin.Context) {
-	accountIDStr := c.PostForm("account_id")
+type ImportController struct {
+	svc *service.TransactionService
+}
+
+func NewImport(svc *service.TransactionService) *ImportController {
+	return &ImportController{svc: svc}
+}
+
+func (c *ImportController) ImportCSV(ctx *gin.Context) {
+	reqCtx := ctx.Request.Context()
+
+	accountIDStr := ctx.PostForm("account_id")
 	accountID, err := strconv.Atoi(accountIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "account_id is required"})
+		errBadRequest(ctx, "account_id is required")
 		return
 	}
 
-	file, _, err := c.Request.FormFile("file")
+	file, _, err := ctx.Request.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required"})
+		errBadRequest(ctx, "file is required")
 		return
 	}
 	defer file.Close()
@@ -31,12 +42,12 @@ func ImportCSV(c *gin.Context) {
 	reader := csv.NewReader(file)
 	records, err := reader.ReadAll()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid CSV: " + err.Error()})
+		errBadRequest(ctx, "invalid CSV: "+err.Error())
 		return
 	}
 
 	if len(records) < 2 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "CSV must have a header row and at least one data row"})
+		errBadRequest(ctx, "CSV must have a header row and at least one data row")
 		return
 	}
 
@@ -57,12 +68,8 @@ func ImportCSV(c *gin.Context) {
 			continue
 		}
 
-		exists, err := models.TransactionExists(date, description, math.Abs(amount))
-		if err != nil {
-			skipped++
-			continue
-		}
-		if exists {
+		exists, err := c.svc.Exists(reqCtx, date, description, math.Abs(amount))
+		if err != nil || exists {
 			skipped++
 			continue
 		}
@@ -73,7 +80,7 @@ func ImportCSV(c *gin.Context) {
 			amount = math.Abs(amount)
 		}
 
-		t := models.Transaction{
+		t := domain.Transaction{
 			AccountID:   accountID,
 			Amount:      amount,
 			Description: description,
@@ -82,14 +89,14 @@ func ImportCSV(c *gin.Context) {
 			Date:        date,
 			Imported:    true,
 		}
-		if err := models.CreateTransaction(&t); err != nil {
+		if err := c.svc.Create(reqCtx, &t); err != nil {
 			skipped++
 			continue
 		}
 		imported++
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	ctx.JSON(http.StatusOK, gin.H{
 		"imported": imported,
 		"skipped":  skipped,
 		"message":  fmt.Sprintf("Imported %d transactions, skipped %d", imported, skipped),

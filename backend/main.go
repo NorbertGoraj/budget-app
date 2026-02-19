@@ -1,68 +1,36 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"budget-app/db"
-	"budget-app/handlers"
-
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
+	"budget-app/appcontext"
 )
 
 func main() {
-	if err := db.Connect(); err != nil {
-		log.Fatal("Failed to connect to database:", err)
+	log.Println("Starting budget-app.")
+
+	ctx, err := appcontext.NewContext()
+	if err != nil {
+		log.Fatal("failed to initialize application context: ", err)
 	}
-	defer db.Close()
+	defer ctx.CancelF()
 
-	if err := db.RunMigrations(); err != nil {
-		log.Fatal("Failed to run migrations:", err)
-	}
+	go waitShutdown(ctx.CancelF)
 
-	r := gin.Default()
+	<-ctx.Done()
+	ctx.WaitGroup.Wait()
+	log.Println("see you!")
+}
 
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
-		AllowCredentials: true,
-	}))
+func waitShutdown(cancelF context.CancelFunc) {
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, syscall.SIGTERM, syscall.SIGINT)
 
-	api := r.Group("/api")
-	{
-		api.GET("/accounts", handlers.GetAccounts)
-		api.POST("/accounts", handlers.CreateAccount)
-		api.PUT("/accounts/:id", handlers.UpdateAccount)
-		api.DELETE("/accounts/:id", handlers.DeleteAccount)
-
-		api.GET("/transactions", handlers.GetTransactions)
-		api.POST("/transactions", handlers.CreateTransaction)
-		api.PUT("/transactions/:id", handlers.UpdateTransaction)
-		api.DELETE("/transactions/:id", handlers.DeleteTransaction)
-
-		api.POST("/import/csv", handlers.ImportCSV)
-
-		api.GET("/budgets", handlers.GetBudgets)
-		api.POST("/budgets", handlers.CreateBudget)
-		api.PUT("/budgets/:id", handlers.UpdateBudget)
-		api.DELETE("/budgets/:id", handlers.DeleteBudget)
-
-		api.GET("/purchases", handlers.GetPurchases)
-		api.POST("/purchases", handlers.CreatePurchase)
-		api.PUT("/purchases/:id", handlers.UpdatePurchase)
-		api.DELETE("/purchases/:id", handlers.DeletePurchase)
-
-		api.GET("/investments", handlers.GetInvestments)
-		api.POST("/investments", handlers.CreateInvestment)
-		api.PUT("/investments/:id", handlers.UpdateInvestment)
-		api.DELETE("/investments/:id", handlers.DeleteInvestment)
-
-		api.GET("/dashboard", handlers.GetDashboard)
-	}
-
-	log.Println("Starting server on :8080")
-	if err := r.Run(":8080"); err != nil {
-		log.Fatal("Failed to start server:", err)
-	}
+	s := <-sigint
+	log.Printf("os signal received: %d (%s)\n", s, s)
+	cancelF()
 }
