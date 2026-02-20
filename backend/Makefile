@@ -6,6 +6,7 @@ WAIT_FLAG = $(if $(WAIT),--wait,)
 
 .PHONY: build build-migrate build-all run \
         migrate migrate-status migrate-version migrate-help \
+        mock test \
         clean
 
 ## ── Build ─────────────────────────────────────────────────────────────────────
@@ -36,6 +37,14 @@ migrate-version: build-migrate
 
 migrate-help: build-migrate
 	./$(MIGRATE) --help
+
+## ── Mocks & Tests ─────────────────────────────────────────────────────────────
+
+mock:
+	mockery
+
+test:
+	go test ./...
 
 ## ── Misc ──────────────────────────────────────────────────────────────────────
 
