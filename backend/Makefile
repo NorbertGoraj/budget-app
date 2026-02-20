@@ -5,8 +5,9 @@ MIGRATE = bin/migrate
 WAIT_FLAG = $(if $(WAIT),--wait,)
 
 .PHONY: build build-migrate build-all run \
-        migrate migrate-status migrate-version migrate-help \
+        migrate migrate-down migrate-reset migrate-status migrate-version migrate-help \
         mock test \
+        fmt \
         clean
 
 ## ── Build ─────────────────────────────────────────────────────────────────────
@@ -29,6 +30,12 @@ run: build
 migrate: build-migrate
 	./$(MIGRATE) $(WAIT_FLAG) up
 
+migrate-down: build-migrate
+	./$(MIGRATE) $(WAIT_FLAG) down
+
+migrate-reset: build-migrate
+	./$(MIGRATE) $(WAIT_FLAG) reset
+
 migrate-status: build-migrate
 	./$(MIGRATE) $(WAIT_FLAG) status
 
@@ -45,6 +52,11 @@ mock:
 
 test:
 	go test ./...
+
+## ── Format ────────────────────────────────────────────────────────────────────
+
+fmt:
+	goimports -w .
 
 ## ── Misc ──────────────────────────────────────────────────────────────────────
 
