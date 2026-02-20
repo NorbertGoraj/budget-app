@@ -1,0 +1,16 @@
+with-expecter: true
+resolve-type-alias: false
+disable-version-string: true
+issue-845-fix: true
+packages:
+  budget-app/domain:
+    config:
+      dir: "mocks/domain"
+      mockname: "Mock{{.InterfaceName}}"
+      outpkg: mockdomain
+    interfaces:
+      AccountRepository:
+      BudgetRepository:
+      TransactionRepository:
+      InvestmentRepository:
+      PurchaseRepository:
