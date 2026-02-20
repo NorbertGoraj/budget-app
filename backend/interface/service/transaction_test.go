@@ -201,8 +201,8 @@ func TestTransactionService_Create_NoBalanceUpdateOnError(t *testing.T) {
 
 	tx := &domain.Transaction{AccountID: 1, Amount: 100.0, Type: "income"}
 	txRepo.EXPECT().Create(ctx, tx).Return(errors.New("insert failed"))
-	// accRepo.UpdateBalance must NOT be called — testify/mock asserts this automatically
-	// because no expectation is set and mock.AssertExpectations runs via t.Cleanup.
+	// accRepo.UpdateBalance must NOT be called; if it is invoked, the mock will fail
+	// immediately because there is no expectation configured for that method.
 
 	err := svc.Create(ctx, tx)
 	assert.Error(t, err)
