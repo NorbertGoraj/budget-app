@@ -5,10 +5,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"budget-app/infrastructure"
 	"budget-app/storage/migrations"
-
-	"github.com/spf13/cobra"
 )
 
 var wait bool
@@ -37,35 +37,85 @@ var upCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Run all pending migrations",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("running pending migrations...")
-		return migrations.Run()
+		oldV, newV, err := migrations.Run(infrastructure.DB, "up")
+		if err != nil {
+			return err
+		}
+		if newV != oldV {
+			fmt.Printf("migrated from version %d to %d\n", oldV, newV)
+		} else {
+			fmt.Printf("schema is up to date at version %d\n", newV)
+		}
+		return nil
+	},
+}
+
+var downCmd = &cobra.Command{
+	Use:   "down",
+	Short: "Roll back the last applied migration",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		oldV, newV, err := migrations.Run(infrastructure.DB, "down")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("rolled back from version %d to %d\n", oldV, newV)
+		return nil
+	},
+}
+
+var resetCmd = &cobra.Command{
+	Use:   "reset",
+	Short: "Roll back all applied migrations",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		oldV, newV, err := migrations.Run(infrastructure.DB, "reset")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("reset from version %d to %d\n", oldV, newV)
+		return nil
 	},
 }
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show the state of every migration file (applied / pending)",
+	Short: "Show current schema version and available migrations",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return migrations.Status()
+		currentVersion, _, err := migrations.Run(infrastructure.DB, "version")
+		if err != nil {
+			return err
+		}
+		all := migrations.Collection.Migrations()
+		fmt.Printf("current version: %d\n\n", currentVersion)
+		for _, m := range all {
+			if m.Version == 0 {
+				continue
+			}
+			state := "pending"
+			if m.Version <= currentVersion {
+				state = "applied"
+			}
+			fmt.Printf("  [%-7s] version %d\n", state, m.Version)
+		}
+		return nil
 	},
 }
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the number of applied migrations",
+	Short: "Print the current schema version",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		v, err := migrations.Version()
+		v, _, err := migrations.Run(infrastructure.DB, "version")
 		if err != nil {
 			return err
 		}
-		fmt.Printf("applied migrations: %d\n", v)
+		fmt.Printf("current version: %d\n", v)
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&wait, "wait", false, "wait 10s before connecting (useful in Docker Compose)")
-	rootCmd.AddCommand(upCmd, statusCmd, versionCmd)
+	rootCmd.AddCommand(upCmd, downCmd, resetCmd, statusCmd, versionCmd)
 }
 
 func main() {
