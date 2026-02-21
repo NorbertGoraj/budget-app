@@ -46,6 +46,8 @@ func NewContext() (*AppContext, error) {
 	budgetRepo := repository.NewBudget(db)
 	purchaseRepo := repository.NewPurchase(db)
 	investmentRepo := repository.NewInvestment(db)
+	debtRepo := repository.NewDebt(db)
+	debtPaymentRepo := repository.NewDebtPayment(db)
 
 	// services
 	accountSvc := service.NewAccount(accountRepo)
@@ -53,7 +55,8 @@ func NewContext() (*AppContext, error) {
 	budgetSvc := service.NewBudget(budgetRepo)
 	purchaseSvc := service.NewPurchase(purchaseRepo)
 	investmentSvc := service.NewInvestment(investmentRepo)
-	dashboardSvc := service.NewDashboard(accountRepo, transactionRepo, budgetRepo, purchaseRepo, investmentRepo)
+	debtSvc := service.NewDebt(debtRepo, debtPaymentRepo)
+	dashboardSvc := service.NewDashboard(accountRepo, transactionRepo, budgetRepo, purchaseRepo, investmentRepo, debtRepo)
 
 	// router
 	r := gin.Default()
@@ -72,6 +75,7 @@ func NewContext() (*AppContext, error) {
 		controller.NewInvestment(investmentSvc),
 		controller.NewDashboard(dashboardSvc),
 		controller.NewImport(transactionSvc),
+		controller.NewDebt(debtSvc),
 	)
 
 	// API server

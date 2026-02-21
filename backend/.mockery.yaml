@@ -14,3 +14,5 @@ packages:
       TransactionRepository:
       InvestmentRepository:
       PurchaseRepository:
+      DebtRepository:
+      DebtPaymentRepository:

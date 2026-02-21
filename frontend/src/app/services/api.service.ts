@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Account, Transaction, Budget, PlannedPurchase, Investment, Dashboard } from './models';
+import { Account, Transaction, Budget, PlannedPurchase, Investment, Dashboard, Debt, DebtPayment } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -89,6 +89,29 @@ export class ApiService {
   }
   deleteInvestment(id: number): Observable<any> {
     return this.http.delete(`${this.base}/investments/${id}`);
+  }
+
+  // Debts
+  getDebts(): Observable<Debt[]> {
+    return this.http.get<Debt[]>(`${this.base}/debts`);
+  }
+  createDebt(d: Partial<Debt>): Observable<Debt> {
+    return this.http.post<Debt>(`${this.base}/debts`, d);
+  }
+  updateDebt(id: number, d: Partial<Debt>): Observable<Debt> {
+    return this.http.put<Debt>(`${this.base}/debts/${id}`, d);
+  }
+  deleteDebt(id: number): Observable<any> {
+    return this.http.delete(`${this.base}/debts/${id}`);
+  }
+  getDebtPayments(debtId: number): Observable<DebtPayment[]> {
+    return this.http.get<DebtPayment[]>(`${this.base}/debts/${debtId}/payments`);
+  }
+  recordDebtPayment(debtId: number, p: Partial<DebtPayment>): Observable<DebtPayment> {
+    return this.http.post<DebtPayment>(`${this.base}/debts/${debtId}/payments`, p);
+  }
+  deleteDebtPayment(paymentId: number): Observable<any> {
+    return this.http.delete(`${this.base}/debts/payments/${paymentId}`);
   }
 
   // Dashboard
