@@ -16,6 +16,7 @@ type DashboardService struct {
 	budgetRepo      domain.BudgetRepository
 	purchaseRepo    domain.PurchaseRepository
 	investmentRepo  domain.InvestmentRepository
+	debtRepo        domain.DebtRepository
 }
 
 func NewDashboard(
@@ -24,6 +25,7 @@ func NewDashboard(
 	budgetRepo domain.BudgetRepository,
 	purchaseRepo domain.PurchaseRepository,
 	investmentRepo domain.InvestmentRepository,
+	debtRepo domain.DebtRepository,
 ) *DashboardService {
 	return &DashboardService{
 		accountRepo:     accountRepo,
@@ -31,6 +33,7 @@ func NewDashboard(
 		budgetRepo:      budgetRepo,
 		purchaseRepo:    purchaseRepo,
 		investmentRepo:  investmentRepo,
+		debtRepo:        debtRepo,
 	}
 }
 
@@ -39,7 +42,7 @@ func (s *DashboardService) GetDashboard(ctx context.Context) (*domain.DashboardR
 	currentMonth := now.Format("2006-01")
 
 	// ── Stage 1 ────────────────────────────────────────────────────────────────
-	// All six data sources are independent — fetch them in parallel.
+	// All data sources are independent — fetch them in parallel.
 	// errgroup inherits the request context: if the client disconnects, all
 	// in-flight DB queries are cancelled automatically.
 	var (
@@ -47,9 +50,9 @@ func (s *DashboardService) GetDashboard(ctx context.Context) (*domain.DashboardR
 		monthlyIncome   float64
 		monthlyExpenses float64
 		budgets         []domain.Budget
-		monthlyInvTotal float64
 		purchases       []domain.PlannedPurchase
 		investments     []domain.Investment
+		debts           []domain.Debt
 	)
 
 	g, gCtx := errgroup.WithContext(ctx)
@@ -71,17 +74,17 @@ func (s *DashboardService) GetDashboard(ctx context.Context) (*domain.DashboardR
 	})
 	g.Go(func() error {
 		var err error
-		monthlyInvTotal, err = s.investmentRepo.MonthlyTotal(gCtx)
-		return err
-	})
-	g.Go(func() error {
-		var err error
 		purchases, err = s.purchaseRepo.GetAll(gCtx)
 		return err
 	})
 	g.Go(func() error {
 		var err error
 		investments, err = s.investmentRepo.GetAll(gCtx)
+		return err
+	})
+	g.Go(func() error {
+		var err error
+		debts, err = s.debtRepo.GetAll(gCtx)
 		return err
 	})
 
@@ -127,6 +130,23 @@ func (s *DashboardService) GetDashboard(ctx context.Context) (*domain.DashboardR
 		totalBalance += a.Balance
 	}
 
+	var monthlyInvTotal float64
+	for _, inv := range investments {
+		if inv.Status != "active" {
+			continue
+		}
+		switch inv.Frequency {
+		case "weekly":
+			monthlyInvTotal += inv.Amount * 4.33
+		case "monthly":
+			monthlyInvTotal += inv.Amount
+		case "quarterly":
+			monthlyInvTotal += inv.Amount / 3
+		case "yearly":
+			monthlyInvTotal += inv.Amount / 12
+		}
+	}
+
 	monthlySurplus := monthlyIncome - monthlyExpenses - monthlyInvTotal
 
 	purchaseAffordability := make([]domain.PurchaseAffordability, 0, len(purchases))
@@ -163,6 +183,9 @@ func (s *DashboardService) GetDashboard(ctx context.Context) (*domain.DashboardR
 	}
 
 	investmentSummaries := make([]domain.InvestmentSummary, 0, len(investments))
+	var debtTotalBal, debtMonthlyMin float64
+	activeDebtItems := make([]domain.DebtItem, 0, len(debts))
+
 	for _, inv := range investments {
 		if inv.Status != "active" {
 			continue
@@ -176,6 +199,23 @@ func (s *DashboardService) GetDashboard(ctx context.Context) (*domain.DashboardR
 		})
 	}
 
+	for _, d := range debts {
+		if d.Status != "active" {
+			continue
+		}
+		debtTotalBal += d.CurrentBalance
+		debtMonthlyMin += d.MinimumPayment
+		activeDebtItems = append(activeDebtItems, domain.DebtItem{
+			ID:             d.ID,
+			Name:           d.Name,
+			Type:           d.Type,
+			CurrentBalance: d.CurrentBalance,
+			InterestRate:   d.InterestRate,
+			MinimumPayment: d.MinimumPayment,
+			DueDay:         d.DueDay,
+		})
+	}
+
 	return &domain.DashboardResponse{
 		TotalBalance:           totalBalance,
 		Accounts:               accounts,
@@ -186,5 +226,10 @@ func (s *DashboardService) GetDashboard(ctx context.Context) (*domain.DashboardR
 		BudgetStatus:           budgetStatuses,
 		PlannedPurchases:       purchaseAffordability,
 		Investments:            investmentSummaries,
+		DebtSummary: domain.DebtSummary{
+			TotalDebt:              debtTotalBal,
+			MonthlyMinimumPayments: debtMonthlyMin,
+			ActiveDebts:            activeDebtItems,
+		},
 	}, nil
 }

@@ -37,19 +37,3 @@ func (r *investmentRepo) Delete(ctx context.Context, id int) error {
 		Where("id = ?", id).Delete()
 	return err
 }
-
-func (r *investmentRepo) MonthlyTotal(ctx context.Context) (float64, error) {
-	var total float64
-	_, err := r.db.WithContext(ctx).QueryOne(pg.Scan(&total), `
-		SELECT COALESCE(SUM(
-			CASE
-				WHEN type = 'one_time'   THEN 0
-				WHEN frequency = 'weekly'    THEN amount * 4.33
-				WHEN frequency = 'monthly'   THEN amount
-				WHEN frequency = 'quarterly' THEN amount / 3
-				WHEN frequency = 'yearly'    THEN amount / 12
-				ELSE 0
-			END
-		), 0) FROM investments WHERE status = 'active'`)
-	return total, err
-}

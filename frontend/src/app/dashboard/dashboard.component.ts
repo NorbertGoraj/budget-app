@@ -5,6 +5,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { MatDividerModule } from '@angular/material/divider';
+import { RouterLink } from '@angular/router';
 import { ApiService } from '../services/api.service';
 import { Dashboard } from '../services/models';
 
@@ -15,6 +16,7 @@ import { Dashboard } from '../services/models';
     CommonModule,
     CurrencyPipe,
     DecimalPipe,
+    RouterLink,
     MatCardModule,
     MatProgressBarModule,
     MatIconModule,
@@ -209,6 +211,50 @@ import { Dashboard } from '../services/models';
           }
         </mat-card-content>
       </mat-card>
+
+      <!-- Debt Summary -->
+      <mat-card>
+        <mat-card-header>
+          <mat-icon mat-card-avatar>credit_card</mat-icon>
+          <mat-card-title>Debts</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="summary-row">
+            <div class="summary-item">
+              <mat-icon>account_balance</mat-icon>
+              <div>
+                <span class="label">Total Debt</span>
+                <span class="value debt-total">
+                  {{ dashboard.debt_summary.total_debt | currency:'PLN':'symbol':'1.2-2' }}
+                </span>
+              </div>
+            </div>
+            <div class="summary-item">
+              <mat-icon>calendar_month</mat-icon>
+              <div>
+                <span class="label">Monthly Minimums</span>
+                <span class="value">
+                  {{ dashboard.debt_summary.monthly_minimum_payments | currency:'PLN':'symbol':'1.2-2' }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <mat-divider></mat-divider>
+          <mat-list>
+            @for (debt of dashboard.debt_summary.active_debts; track debt.id) {
+              <mat-list-item>
+                <mat-icon matListItemIcon>credit_card</mat-icon>
+                <span matListItemTitle>{{ debt.name }}</span>
+                <span matListItemLine>{{ debt.type }} &middot; {{ debt.interest_rate | number:'1.1-2' }}% APR &middot; due day {{ debt.due_day }}</span>
+                <span matListItemMeta>{{ debt.current_balance | currency:'PLN':'symbol':'1.2-2' }}</span>
+              </mat-list-item>
+            }
+          </mat-list>
+          @if (dashboard.debt_summary.active_debts.length === 0) {
+            <p class="empty-message">No active debts. <a routerLink="/debts">Add one</a></p>
+          }
+        </mat-card-content>
+      </mat-card>
     </div>
   `,
   styles: [`
@@ -332,6 +378,7 @@ import { Dashboard } from '../services/models';
       text-align: center;
       padding: 16px;
     }
+    .debt-total { color: #c62828; }
   `],
 })
 export class DashboardComponent implements OnInit {

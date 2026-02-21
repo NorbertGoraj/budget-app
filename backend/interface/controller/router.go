@@ -11,6 +11,7 @@ func SetupRoutes(
 	investments *InvestmentController,
 	dashboard *DashboardController,
 	imports *ImportController,
+	debts *DebtController,
 ) {
 	api := r.Group("/api")
 	{
@@ -42,5 +43,13 @@ func SetupRoutes(
 		api.DELETE("/investments/:id", investments.Delete)
 
 		api.GET("/dashboard", dashboard.Get)
+
+		api.GET("/debts", debts.GetAll)
+		api.POST("/debts", debts.Create)
+		api.PUT("/debts/:id", debts.Update)
+		api.DELETE("/debts/:id", debts.Delete)
+		api.GET("/debts/:id/payments", debts.GetPayments)
+		api.POST("/debts/:id/payments", debts.RecordPayment)
+		api.DELETE("/debts/payments/:id", debts.DeletePayment)
 	}
 }

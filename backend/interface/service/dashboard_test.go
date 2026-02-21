@@ -21,6 +21,7 @@ func newDashboardSvc(t *testing.T) (
 	*mockdomain.MockBudgetRepository,
 	*mockdomain.MockPurchaseRepository,
 	*mockdomain.MockInvestmentRepository,
+	*mockdomain.MockDebtRepository,
 ) {
 	t.Helper()
 	accRepo := mockdomain.NewMockAccountRepository(t)
@@ -28,8 +29,9 @@ func newDashboardSvc(t *testing.T) (
 	budgetRepo := mockdomain.NewMockBudgetRepository(t)
 	purchaseRepo := mockdomain.NewMockPurchaseRepository(t)
 	invRepo := mockdomain.NewMockInvestmentRepository(t)
-	svc := service.NewDashboard(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo)
-	return svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo
+	debtRepo := mockdomain.NewMockDebtRepository(t)
+	svc := service.NewDashboard(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo)
+	return svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo
 }
 
 // setupStage1 sets up the common stage-1 expectations. All context args use
@@ -40,30 +42,31 @@ func setupStage1(
 	budgetRepo *mockdomain.MockBudgetRepository,
 	purchaseRepo *mockdomain.MockPurchaseRepository,
 	invRepo *mockdomain.MockInvestmentRepository,
+	debtRepo *mockdomain.MockDebtRepository,
 	accounts []domain.Account,
 	income, expenses float64,
 	budgets []domain.Budget,
-	monthlyInvTotal float64,
 	purchases []domain.PlannedPurchase,
 	investments []domain.Investment,
+	debts []domain.Debt,
 ) {
 	accRepo.EXPECT().GetAll(mock.Anything).Return(accounts, nil)
 	txRepo.EXPECT().MonthlySums(mock.Anything, mock.AnythingOfType("string")).Return(income, expenses, nil)
 	budgetRepo.EXPECT().GetAll(mock.Anything).Return(budgets, nil)
-	invRepo.EXPECT().MonthlyTotal(mock.Anything).Return(monthlyInvTotal, nil)
 	purchaseRepo.EXPECT().GetAll(mock.Anything).Return(purchases, nil)
 	invRepo.EXPECT().GetAll(mock.Anything).Return(investments, nil)
+	debtRepo.EXPECT().GetAll(mock.Anything).Return(debts, nil)
 }
 
 func TestDashboardService_TotalBalance(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
 	accounts := []domain.Account{
 		{ID: 1, Balance: 1000.0},
 		{ID: 2, Balance: 500.0},
 	}
-	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo,
-		accounts, 0, 0, nil, 0, nil, nil)
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		accounts, 0, 0, nil, nil, nil, nil)
 
 	resp, err := svc.GetDashboard(context.Background())
 	require.NoError(t, err)
@@ -71,14 +74,18 @@ func TestDashboardService_TotalBalance(t *testing.T) {
 }
 
 func TestDashboardService_MonthlySurplus(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
-	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo,
-		nil, 3000.0, 1200.0, nil, 300.0, nil, nil)
+	// A single active monthly investment of 300 drives monthlyInvTotal=300.
+	// surplus = income(3000) - expenses(1200) - investments(300) = 1500
+	investments := []domain.Investment{
+		{ID: 1, Name: "ETF", Type: "recurring", Amount: 300.0, Frequency: "monthly", Status: "active"},
+	}
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		nil, 3000.0, 1200.0, nil, nil, investments, nil)
 
 	resp, err := svc.GetDashboard(context.Background())
 	require.NoError(t, err)
-	// surplus = income - expenses - investments = 3000 - 1200 - 300 = 1500
 	assert.Equal(t, 1500.0, resp.AvailableForInvestment)
 	assert.Equal(t, 3000.0, resp.MonthlyIncome)
 	assert.Equal(t, 1200.0, resp.MonthlyExpenses)
@@ -86,14 +93,14 @@ func TestDashboardService_MonthlySurplus(t *testing.T) {
 }
 
 func TestDashboardService_BudgetStatus(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
 	budgets := []domain.Budget{
 		{ID: 1, Category: "Food", MonthlyLimit: 500.0},
 		{ID: 2, Category: "Transport", MonthlyLimit: 200.0},
 	}
-	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo,
-		nil, 0, 0, budgets, 0, nil, nil)
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		nil, 0, 0, budgets, nil, nil, nil)
 
 	txRepo.EXPECT().SpentByCategory(mock.Anything, "Food", mock.AnythingOfType("string")).Return(350.0, nil)
 	txRepo.EXPECT().SpentByCategory(mock.Anything, "Transport", mock.AnythingOfType("string")).Return(80.0, nil)
@@ -119,15 +126,15 @@ func TestDashboardService_BudgetStatus(t *testing.T) {
 }
 
 func TestDashboardService_PurchaseAffordability_Affordable(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
 	accounts := []domain.Account{{Balance: 5000.0}}
 	purchases := []domain.PlannedPurchase{
 		{ID: 1, Name: "Laptop", EstimatedCost: 1500.0, Status: "pending", Priority: "high"},
 	}
 	// income=3000, expenses=1000, invTotal=0 → surplus=2000 ≥ 0; balance=5000 ≥ 1500
-	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo,
-		accounts, 3000.0, 1000.0, nil, 0, purchases, nil)
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		accounts, 3000.0, 1000.0, nil, purchases, nil, nil)
 
 	resp, err := svc.GetDashboard(context.Background())
 	require.NoError(t, err)
@@ -141,15 +148,15 @@ func TestDashboardService_PurchaseAffordability_Affordable(t *testing.T) {
 }
 
 func TestDashboardService_PurchaseAffordability_NotAffordable_NegativeSurplus(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
 	accounts := []domain.Account{{Balance: 10000.0}}
 	purchases := []domain.PlannedPurchase{
 		{ID: 2, Name: "Car", EstimatedCost: 500.0, Status: "pending"},
 	}
 	// surplus = 1000 - 2000 - 0 = -1000 (negative)
-	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo,
-		accounts, 1000.0, 2000.0, nil, 0, purchases, nil)
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		accounts, 1000.0, 2000.0, nil, purchases, nil, nil)
 
 	resp, err := svc.GetDashboard(context.Background())
 	require.NoError(t, err)
@@ -161,15 +168,15 @@ func TestDashboardService_PurchaseAffordability_NotAffordable_NegativeSurplus(t 
 }
 
 func TestDashboardService_PurchaseAffordability_NotAffordable_InsufficientBalance(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
 	accounts := []domain.Account{{Balance: 100.0}}
 	purchases := []domain.PlannedPurchase{
 		{ID: 3, Name: "Vacation", EstimatedCost: 2000.0, Status: "pending"},
 	}
 	// surplus = 3000 - 1000 - 0 = 2000 (positive), but balance=100 < 2000
-	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo,
-		accounts, 3000.0, 1000.0, nil, 0, purchases, nil)
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		accounts, 3000.0, 1000.0, nil, purchases, nil, nil)
 
 	resp, err := svc.GetDashboard(context.Background())
 	require.NoError(t, err)
@@ -183,7 +190,7 @@ func TestDashboardService_PurchaseAffordability_NotAffordable_InsufficientBalanc
 }
 
 func TestDashboardService_PurchaseAffordability_SkipPurchasedAndCancelled(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
 	purchases := []domain.PlannedPurchase{
 		{ID: 1, Name: "Purchased Item", Status: "purchased"},
@@ -191,26 +198,25 @@ func TestDashboardService_PurchaseAffordability_SkipPurchasedAndCancelled(t *tes
 		{ID: 3, Name: "Pending Item", EstimatedCost: 50.0, Status: "pending"},
 	}
 	accounts := []domain.Account{{Balance: 1000.0}}
-	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo,
-		accounts, 2000.0, 500.0, nil, 0, purchases, nil)
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		accounts, 2000.0, 500.0, nil, purchases, nil, nil)
 
 	resp, err := svc.GetDashboard(context.Background())
 	require.NoError(t, err)
-	// only the pending item should appear
 	assert.Len(t, resp.PlannedPurchases, 1)
 	assert.Equal(t, "Pending Item", resp.PlannedPurchases[0].Name)
 }
 
 func TestDashboardService_InvestmentSummaries_OnlyActive(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
 	investments := []domain.Investment{
 		{ID: 1, Name: "ETF", Status: "active", Amount: 500.0, Frequency: "monthly", Category: "stocks"},
 		{ID: 2, Name: "Old Bond", Status: "closed", Amount: 1000.0},
 		{ID: 3, Name: "Crypto", Status: "active", Amount: 200.0, Frequency: "weekly", Category: "crypto"},
 	}
-	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo,
-		nil, 0, 0, nil, 0, nil, investments)
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		nil, 0, 0, nil, nil, investments, nil)
 
 	resp, err := svc.GetDashboard(context.Background())
 	require.NoError(t, err)
@@ -223,10 +229,10 @@ func TestDashboardService_InvestmentSummaries_OnlyActive(t *testing.T) {
 }
 
 func TestDashboardService_EmptyAccounts_ReturnsEmptySlice(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
-	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo,
-		nil, 0, 0, nil, 0, nil, nil)
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		nil, 0, 0, nil, nil, nil, nil)
 
 	resp, err := svc.GetDashboard(context.Background())
 	require.NoError(t, err)
@@ -235,16 +241,41 @@ func TestDashboardService_EmptyAccounts_ReturnsEmptySlice(t *testing.T) {
 }
 
 func TestDashboardService_ReturnsErrorOnStage1Failure(t *testing.T) {
-	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo := newDashboardSvc(t)
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
 
 	dbErr := errors.New("database unavailable")
 	accRepo.EXPECT().GetAll(mock.Anything).Return(nil, dbErr)
 	txRepo.EXPECT().MonthlySums(mock.Anything, mock.AnythingOfType("string")).Return(0.0, 0.0, nil).Maybe()
 	budgetRepo.EXPECT().GetAll(mock.Anything).Return(nil, nil).Maybe()
-	invRepo.EXPECT().MonthlyTotal(mock.Anything).Return(0.0, nil).Maybe()
 	purchaseRepo.EXPECT().GetAll(mock.Anything).Return(nil, nil).Maybe()
 	invRepo.EXPECT().GetAll(mock.Anything).Return(nil, nil).Maybe()
+	debtRepo.EXPECT().GetAll(mock.Anything).Return(nil, nil).Maybe()
 
 	_, err := svc.GetDashboard(context.Background())
 	assert.Error(t, err)
+}
+
+func TestDashboardService_DebtSummary(t *testing.T) {
+	svc, accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo := newDashboardSvc(t)
+
+	debts := []domain.Debt{
+		{ID: 1, Name: "Credit Card", Type: "credit_card", CurrentBalance: 2000.0, InterestRate: 19.99, MinimumPayment: 50.0, DueDay: 15, Status: "active"},
+		{ID: 2, Name: "Car Loan", Type: "car_loan", CurrentBalance: 10000.0, InterestRate: 5.5, MinimumPayment: 200.0, DueDay: 1, Status: "active"},
+		{ID: 3, Name: "Old Debt", Type: "loan", CurrentBalance: 0.0, MinimumPayment: 0.0, Status: "paid_off"},
+	}
+	setupStage1(accRepo, txRepo, budgetRepo, purchaseRepo, invRepo, debtRepo,
+		nil, 0, 0, nil, nil, nil, debts)
+
+	resp, err := svc.GetDashboard(context.Background())
+	require.NoError(t, err)
+
+	// totals are computed from the slice: 2000+10000=12000, 50+200=250
+	assert.Equal(t, 12000.0, resp.DebtSummary.TotalDebt)
+	assert.Equal(t, 250.0, resp.DebtSummary.MonthlyMinimumPayments)
+	require.Len(t, resp.DebtSummary.ActiveDebts, 2)
+
+	names := []string{resp.DebtSummary.ActiveDebts[0].Name, resp.DebtSummary.ActiveDebts[1].Name}
+	assert.Contains(t, names, "Credit Card")
+	assert.Contains(t, names, "Car Loan")
+	assert.NotContains(t, names, "Old Debt")
 }

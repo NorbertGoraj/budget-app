@@ -45,6 +45,10 @@ import { MatListModule } from '@angular/material/list';
             <mat-icon matListItemIcon>trending_up</mat-icon>
             <span matListItemTitle>Investments</span>
           </a>
+          <a mat-list-item routerLink="/debts" routerLinkActive="active">
+            <mat-icon matListItemIcon>credit_card</mat-icon>
+            <span matListItemTitle>Debts</span>
+          </a>
         </mat-nav-list>
       </mat-sidenav>
       <mat-sidenav-content class="content">

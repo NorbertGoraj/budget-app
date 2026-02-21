@@ -24,5 +24,4 @@ type InvestmentRepository interface {
 	Create(ctx context.Context, inv *Investment) error
 	Update(ctx context.Context, inv *Investment) error
 	Delete(ctx context.Context, id int) error
-	MonthlyTotal(ctx context.Context) (float64, error)
 }

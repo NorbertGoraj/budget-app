@@ -26,6 +26,22 @@ type InvestmentSummary struct {
 	Category  string  `json:"category"`
 }
 
+type DebtItem struct {
+	ID             int     `json:"id"`
+	Name           string  `json:"name"`
+	Type           string  `json:"type"`
+	CurrentBalance float64 `json:"current_balance"`
+	InterestRate   float64 `json:"interest_rate"`
+	MinimumPayment float64 `json:"minimum_payment"`
+	DueDay         int     `json:"due_day"`
+}
+
+type DebtSummary struct {
+	TotalDebt              float64    `json:"total_debt"`
+	MonthlyMinimumPayments float64    `json:"monthly_minimum_payments"`
+	ActiveDebts            []DebtItem `json:"active_debts"`
+}
+
 type DashboardResponse struct {
 	TotalBalance           float64                 `json:"total_balance"`
 	Accounts               []Account               `json:"accounts"`
@@ -36,4 +52,5 @@ type DashboardResponse struct {
 	BudgetStatus           []BudgetStatus          `json:"budget_status"`
 	PlannedPurchases       []PurchaseAffordability `json:"planned_purchases"`
 	Investments            []InvestmentSummary     `json:"investments"`
+	DebtSummary            DebtSummary             `json:"debt_summary"`
 }

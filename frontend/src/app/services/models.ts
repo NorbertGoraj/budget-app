@@ -76,6 +76,45 @@ export interface InvestmentSummary {
   category: string;
 }
 
+export interface Debt {
+  id: number;
+  name: string;
+  type: 'credit_card' | 'loan' | 'mortgage' | 'student_loan' | 'car_loan' | 'other';
+  original_amount: number;
+  current_balance: number;
+  interest_rate: number;
+  minimum_payment: number;
+  due_day: number;
+  status: 'active' | 'paid_off';
+  notes: string;
+  created_at: string;
+}
+
+export interface DebtPayment {
+  id: number;
+  debt_id: number;
+  amount: number;
+  paid_at: string;
+  notes: string;
+  created_at: string;
+}
+
+export interface DebtItem {
+  id: number;
+  name: string;
+  type: string;
+  current_balance: number;
+  interest_rate: number;
+  minimum_payment: number;
+  due_day: number;
+}
+
+export interface DebtSummary {
+  total_debt: number;
+  monthly_minimum_payments: number;
+  active_debts: DebtItem[];
+}
+
 export interface Dashboard {
   total_balance: number;
   accounts: Account[];
@@ -86,4 +125,5 @@ export interface Dashboard {
   budget_status: BudgetStatus[];
   planned_purchases: PurchaseAffordability[];
   investments: InvestmentSummary[];
+  debt_summary: DebtSummary;
 }
