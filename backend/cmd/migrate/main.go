@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"budget-app/infrastructure"
-	"budget-app/storage/migrations"
+	"budget-app/storage"
 )
 
 var wait bool
@@ -37,7 +37,10 @@ var upCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Run all pending migrations",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		oldV, newV, err := migrations.Run(infrastructure.DB, "up")
+		if _, _, err := storage.Run(infrastructure.DB, "init"); err != nil {
+			return fmt.Errorf("init migrations table: %w", err)
+		}
+		oldV, newV, err := storage.Run(infrastructure.DB, "up")
 		if err != nil {
 			return err
 		}
@@ -54,7 +57,7 @@ var downCmd = &cobra.Command{
 	Use:   "down",
 	Short: "Roll back the last applied migration",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		oldV, newV, err := migrations.Run(infrastructure.DB, "down")
+		oldV, newV, err := storage.Run(infrastructure.DB, "down")
 		if err != nil {
 			return err
 		}
@@ -67,7 +70,7 @@ var resetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Roll back all applied migrations",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		oldV, newV, err := migrations.Run(infrastructure.DB, "reset")
+		oldV, newV, err := storage.Run(infrastructure.DB, "reset")
 		if err != nil {
 			return err
 		}
@@ -80,11 +83,11 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show current schema version and available migrations",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		currentVersion, _, err := migrations.Run(infrastructure.DB, "version")
+		currentVersion, _, err := storage.Run(infrastructure.DB, "version")
 		if err != nil {
 			return err
 		}
-		all := migrations.Collection.Migrations()
+		all := storage.Collection.Migrations()
 		fmt.Printf("current version: %d\n\n", currentVersion)
 		for _, m := range all {
 			if m.Version == 0 {
@@ -104,7 +107,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the current schema version",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		v, _, err := migrations.Run(infrastructure.DB, "version")
+		v, _, err := storage.Run(infrastructure.DB, "version")
 		if err != nil {
 			return err
 		}
